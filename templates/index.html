@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Phone Caller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .phone-input {
+            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-4xl mx-auto">
+            <!-- Header -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h1 class="text-3xl font-bold text-gray-800 text-center mb-2">📞 Bulk Phone Caller</h1>
+                <p class="text-gray-600 text-center">Manage your phone numbers and make calls with ease</p>
+            </div>
+
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="mb-4 p-4 rounded-md {% if category == 'error' %}bg-red-100 text-red-700{% elif category == 'success' %}bg-green-100 text-green-700{% elif category == 'warning' %}bg-yellow-100 text-yellow-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Phone Numbers Management -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">📋 Phone Numbers</h2>
+
+                    <!-- Add Number Form -->
+                    <form method="POST" action="{{ url_for('add_number') }}" class="mb-6">
+                        <div class="flex gap-2">
+                            <input
+                                type="tel"
+                                name="number"
+                                placeholder="Enter phone number (e.g., +1234567890)"
+                                class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                required
+                            >
+                            <button
+                                type="submit"
+                                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition duration-200"
+                            >
+                                Add Number
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Numbers List -->
+                    <div class="space-y-2 max-h-64 overflow-y-auto">
+                        {% if numbers %}
+                            {% for number in numbers %}
+                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-md">
+                                    <span class="font-mono text-gray-800">{{ number }}</span>
+                                    <a
+                                        href="{{ url_for('remove_number', number=number) }}"
+                                        class="text-red-600 hover:text-red-800 text-sm"
+                                        onclick="return confirm('Are you sure you want to remove {{ number }}?')"
+                                    >
+                                        Remove
+                                    </a>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-gray-500 text-center py-4">No phone numbers added yet.</p>
+                        {% endif %}
+                    </div>
+
+                    <!-- Call All Button -->
+                    {% if numbers %}
+                        <form method="POST" action="{{ url_for('call_all') }}" class="mt-6">
+                            <button
+                                type="submit"
+                                class="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-md transition duration-200 font-semibold"
+                                onclick="return confirm('Are you sure you want to call all {{ numbers|length }} numbers?')"
+                            >
+                                📞 Call All Numbers ({{ numbers|length }})
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+
+                <!-- Call Status -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">📊 Call Status</h2>
+                    <div id="status-container" class="space-y-2 max-h-64 overflow-y-auto bg-gray-50 p-4 rounded-md">
+                        <p class="text-gray-500 text-sm">Status updates will appear here...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Real-time status updates
+        const statusContainer = document.getElementById('status-container');
+
+        function addStatusMessage(message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'text-sm p-2 rounded';
+
+            if (message.includes('✅')) {
+                messageDiv.className += ' bg-green-100 text-green-800';
+            } else if (message.includes('❌')) {
+                messageDiv.className += ' bg-red-100 text-red-800';
+            } else if (message.includes('📞')) {
+                messageDiv.className += ' bg-blue-100 text-blue-800';
+            } else {
+                messageDiv.className += ' bg-gray-100 text-gray-800';
+            }
+
+            messageDiv.textContent = message;
+            statusContainer.appendChild(messageDiv);
+            statusContainer.scrollTop = statusContainer.scrollHeight;
+        }
+
+        // Connect to status stream
+        const eventSource = new EventSource('/get_status');
+        eventSource.onmessage = function(event) {
+            addStatusMessage(event.data);
+        };
+
+        eventSource.onerror = function(event) {
+            console.error('EventSource failed:', event);
+        };
+
+        // Refresh numbers count when status updates
+        function refreshNumbersCount() {
+            fetch('/')
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const newDoc = parser.parseFromString(html, 'text/html');
+                    const newNumbers = newDoc.querySelectorAll('.bg-gray-50');
+                    // Update count in call button if it exists
+                    const callButton = document.querySelector('button[type="submit"]');
+                    if (callButton) {
+                        const match = callButton.textContent.match(/\((\d+)\)/);
+                        if (match && newNumbers.length !== parseInt(match[1])) {
+                            location.reload();
+                        }
+                    }
+                });
+        }
+
+        // Check for updates every 5 seconds
+        setInterval(refreshNumbersCount, 5000);
+    </script>
+</body>
+</html>
