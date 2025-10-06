@@ -157,4 +157,4 @@ def get_status():
     return app.response_class(generate(), mimetype='text/event-stream')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=1000)
